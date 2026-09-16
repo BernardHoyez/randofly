@@ -100,11 +100,15 @@ function updateSummary() {
   const km = (flightPath.totalDistance / 1000).toFixed(2);
   const speed = parseFloat(els.speedInput.value) || 40;
   const durationS = flightPath.totalDistance / (speed / 3.6);
+  const isFallback = flightPath.elevationSource.includes('estimée');
   els.summary.innerHTML =
     `<strong>${km} km</strong> de tracé · ` +
     `${waypoints.length} point${waypoints.length > 1 ? 's' : ''} d'intérêt · ` +
     `altitude sol : <strong>${flightPath.elevationSource}</strong> · ` +
-    `durée du survol estimée : <strong>${formatTime(durationS)}</strong>`;
+    `durée du survol estimée : <strong>${formatTime(durationS)}</strong>` +
+    (isFallback
+      ? `<br><span class="warning">⚠ Le service d'altimétrie IGN n'a pas répondu à temps : le survol se fera à altitude constante, sans suivre le relief réel du terrain. Réessayez plus tard, ou utilisez un fichier GPX contenant déjà des altitudes.</span>`
+      : '');
 }
 
 function showError(msg) { els.importError.textContent = msg; els.importError.hidden = false; }

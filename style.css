@@ -95,6 +95,7 @@ input[type="number"] {
   line-height: 1.5;
 }
 .summary strong { color: var(--text); }
+.summary .warning { display: inline-block; margin-top: 0.5rem; color: #ffb454; }
 
 .actions { margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
