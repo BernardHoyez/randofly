@@ -1,38 +1,31 @@
-// app.js — orchestration UI + carte 3D + lecture du survol + export vidéo
-
-const IGN_ORTHO_URL =
-  'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
-  '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM_0_19' +
-  '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg';
+// app.js — orchestration UI : import du tracé, calcul du survol, aperçu 2D,
+// génération et téléchargement du KMZ (gx:Tour) pour Google Earth.
 
 const els = {
   dropzone: document.getElementById('dropzone'),
   fileInput: document.getElementById('file-input'),
   importError: document.getElementById('import-error'),
   panelSettings: document.getElementById('panel-settings'),
-  panelMap: document.getElementById('panel-map'),
   altitudeInput: document.getElementById('altitude-input'),
   speedInput: document.getElementById('speed-input'),
   pitchInput: document.getElementById('pitch-input'),
+  pauseInput: document.getElementById('pause-input'),
   summary: document.getElementById('summary'),
-  btnRecompute: document.getElementById('btn-recompute'),
-  map: document.getElementById('map'),
-  waypointLabel: document.getElementById('waypoint-label'),
-  loadingOverlay: document.getElementById('loading-overlay'),
-  btnPlay: document.getElementById('btn-play'),
-  btnPause: document.getElementById('btn-pause'),
-  btnRestart: document.getElementById('btn-restart'),
-  progress: document.getElementById('progress'),
-  timeLabel: document.getElementById('time-label'),
-  btnOverview: document.getElementById('btn-overview'),
-  btnExport: document.getElementById('btn-export'),
+  previewSvg: document.getElementById('preview-svg'),
+  btnGenerate: document.getElementById('btn-generate'),
+  btnToggleKml: document.getElementById('btn-toggle-kml'),
+  kmlPreview: document.getElementById('kml-preview'),
   exportStatus: document.getElementById('export-status'),
   globalError: document.getElementById('global-error'),
 };
 
+let flightPath = null;
+let waypoints = [];
+
 // ---------- Bandeau d'erreur global ----------
-// Objectif : qu'aucune erreur (JS, réseau, carte) ne reste invisible dans la
-// seule console du navigateur. Tout s'affiche directement dans l'appli.
+// Objectif : qu'aucune erreur (JS, réseau) ne reste invisible dans la seule
+// console du navigateur. Tout s'affiche directement dans l'appli, dans un
+// champ texte sélectionnable en un clic (ne dépend d'aucune permission).
 
 function reportError(context, detail) {
   const text = `${context} : ${detail}`;
@@ -43,11 +36,8 @@ function reportError(context, detail) {
   console.error(text);
 }
 
-// Solution garantie sans dépendre d'aucune permission de presse-papiers :
-// un clic dans le champ sélectionne tout, il ne reste qu'à faire Ctrl+C.
 els.globalError.querySelector('.global-error-text').addEventListener('focus', (e) => e.currentTarget.select());
 els.globalError.querySelector('.global-error-text').addEventListener('click', (e) => e.currentTarget.select());
-
 els.globalError.querySelector('.global-error-close').addEventListener('click', () => {
   els.globalError.hidden = true;
   els.globalError.querySelector('.global-error-text').value = '';
@@ -69,15 +59,11 @@ async function copyToClipboard(text) {
       return true;
     }
   } catch (e) { /* on tente le repli ci-dessous */ }
-  // Repli fiable si l'API Clipboard est absente/refusée (contexte non
-  // sécurisé, permission bloquée, ancien navigateur…) : sélection manuelle
-  // + document.execCommand, qui fonctionne quasiment partout.
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
     ta.style.left = '-9999px';
-    ta.style.top = '0';
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
@@ -96,17 +82,6 @@ window.addEventListener('unhandledrejection', (e) => {
   const reason = e.reason;
   reportError('Erreur non gérée', reason && reason.message ? reason.message : String(reason));
 });
-
-let map = null;
-let flightPath = null;
-let waypoints = []; // {lat, lon, name, dist, shown}
-let currentDistance = 0;
-let playing = false;
-let lastFrameTime = null;
-let overviewMode = true;
-let recorder = null;
-let recordedChunks = [];
-let isRecording = false;
 
 // ---------- Import ----------
 
@@ -127,35 +102,26 @@ els.fileInput.addEventListener('change', (e) => {
 
 async function handleFile(file) {
   hideError();
-  showLoading('Lecture du fichier…');
-  stopFlight();
+  els.btnGenerate.disabled = true;
+  els.btnGenerate.textContent = '⏳ Analyse du tracé…';
   try {
     const { track, waypoints: rawWaypoints } = await parseTrackFile(file);
-    showLoading('Analyse et lissage du tracé…');
-    flightPath = await buildFlightPath(track, (msg) => showLoading(msg));
+    els.btnGenerate.textContent = '⏳ Calcul du profil altimétrique…';
+    flightPath = await buildFlightPath(track, (msg) => { els.btnGenerate.textContent = `⏳ ${msg}`; });
     waypoints = attachWaypointDistances(rawWaypoints, flightPath);
-    currentDistance = 0;
 
-    // Le conteneur de la carte doit être visible AVANT que MapLibre
-    // s'initialise : une carte WebGL créée dans un élément caché
-    // (display:none) ne se dimensionne pas correctement et peut ne jamais
-    // finir de charger.
-    els.panelSettings.hidden = false;
-    els.panelMap.hidden = false;
-
-    ensureMap();
-    await mapIdle();
-    map.resize(); // au cas où la taille aurait été calculée avant l'affichage
-    drawRoute();
-    fitToRoute();
     updateSummary();
-
-    hideLoading();
-    goOverview();
+    drawPreviewSVG(flightPath, waypoints);
+    els.kmlPreview.hidden = true;
+    els.kmlPreview.value = '';
+    els.btnToggleKml.textContent = 'Voir le KML généré';
+    els.panelSettings.hidden = false;
   } catch (err) {
-    hideLoading();
     showError(err.message || String(err));
     reportError('Échec du traitement du fichier', err.message || String(err));
+  } finally {
+    els.btnGenerate.disabled = false;
+    els.btnGenerate.textContent = '⬇️ Générer et télécharger le KMZ';
   }
 }
 
@@ -167,232 +133,37 @@ function attachWaypointDistances(rawWaypoints, path) {
       const d2 = dLat * dLat + dLon * dLon;
       if (d2 < bestD2) { bestD2 = d2; bestDist = p.dist; }
     }
-    return { ...wp, dist: bestDist, shown: false };
+    return { ...wp, dist: bestDist };
   });
+}
+
+function currentSettings() {
+  return {
+    altitudeOffset: parseFloat(els.altitudeInput.value) || 150,
+    speedKmh: parseFloat(els.speedInput.value) || 40,
+    tilt: parseFloat(els.pitchInput.value) || 68,
+    waypointPauseS: parseFloat(els.pauseInput.value) || 0,
+  };
 }
 
 function updateSummary() {
   const km = (flightPath.totalDistance / 1000).toFixed(2);
-  const speed = parseFloat(els.speedInput.value) || 40;
-  const durationS = flightPath.totalDistance / (speed / 3.6);
+  const { speedKmh } = currentSettings();
+  const durationS = flightPath.totalDistance / (speedKmh / 3.6);
   const isFallback = flightPath.elevationSource.includes('estimée');
   els.summary.innerHTML =
     `<strong>${km} km</strong> de tracé · ` +
     `${waypoints.length} point${waypoints.length > 1 ? 's' : ''} d'intérêt · ` +
     `altitude sol : <strong>${flightPath.elevationSource}</strong> · ` +
-    `durée du survol estimée : <strong>${formatTime(durationS)}</strong>` +
+    `durée du survol estimée : <strong>${formatTime(durationS)}</strong> · ` +
+    `${flightPath.points.length} images caméra` +
     (isFallback
       ? `<br><span class="warning">⚠ Le service d'altimétrie IGN n'a pas répondu à temps : le survol se fera à altitude constante, sans suivre le relief réel du terrain. Réessayez plus tard, ou utilisez un fichier GPX contenant déjà des altitudes.</span>`
       : '');
 }
-
-function showError(msg) { els.importError.textContent = msg; els.importError.hidden = false; }
-function hideError() { els.importError.hidden = true; }
-function showLoading(msg) { els.loadingOverlay.hidden = false; els.loadingOverlay.querySelector('span').textContent = msg; }
-function hideLoading() { els.loadingOverlay.hidden = true; }
-
-// ---------- Carte ----------
-
-function ensureMap() {
-  if (map) return;
-  map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {
-        ortho: {
-          type: 'raster',
-          tiles: [IGN_ORTHO_URL],
-          tileSize: 256,
-          minzoom: 0,
-          maxzoom: 19,
-          attribution: '© IGN Géoplateforme',
-        },
-      },
-      layers: [{ id: 'ortho', type: 'raster', source: 'ortho' }],
-    },
-    center: [2, 46],
-    zoom: 5,
-    pitch: 0,
-    preserveDrawingBuffer: true, // nécessaire pour l'export vidéo du canvas
-    attributionControl: true,
-  });
-
-  // Ne jamais laisser une erreur de tuile/couche interrompre le reste de
-  // l'app, et la rendre visible dans l'appli plutôt que dans la seule
-  // console (au plus une fois par type d'erreur, pour ne pas spammer).
-  const seenMapErrors = new Set();
-  map.on('error', (e) => {
-    const msg = (e && e.error && e.error.message) || String(e);
-    if (seenMapErrors.has(msg)) return;
-    seenMapErrors.add(msg);
-    reportError('Erreur carte/réseau', msg);
-  });
-
-  // Remarque : pas de couche "sky" ici — non supportée par la version de
-  // MapLibre GL JS vendorisée (3.6.2), et ajouter une couche invalide dans
-  // le gestionnaire 'load' interromprait les AUTRES écouteurs de cet
-  // événement (dont celui qui attend que la carte soit prête), bloquant
-  // l'appli sans erreur visible.
-}
-
-function mapIdle() {
-  return new Promise((resolve, reject) => {
-    if (map.loaded()) { resolve(); return; }
-    const timer = setTimeout(() => reject(new Error("La carte n'a pas terminé son chargement à temps (15s).")), 15000);
-    map.once('load', () => { clearTimeout(timer); resolve(); });
-  });
-}
-
-function drawRoute() {
-  const coords = flightPath.points.map((p) => [p.lon, p.lat]);
-  const geojson = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } };
-
-  if (map.getSource('route')) {
-    map.getSource('route').setData(geojson);
-  } else {
-    map.addSource('route', { type: 'geojson', data: geojson });
-    map.addLayer({
-      id: 'route-line',
-      type: 'line',
-      source: 'route',
-      paint: { 'line-color': '#5ec9ff', 'line-width': 3, 'line-opacity': 0.9 },
-    });
-  }
-
-  document.querySelectorAll('.wp-marker').forEach((el) => el.remove());
-  for (const wp of waypoints) {
-    const el = document.createElement('div');
-    el.className = 'wp-marker';
-    el.style.cssText =
-      'width:12px;height:12px;border-radius:50%;background:#ffb454;border:2px solid #0b1220;';
-    new maplibregl.Marker({ element: el }).setLngLat([wp.lon, wp.lat]).addTo(map);
-  }
-}
-
-function fitToRoute() {
-  const lons = flightPath.points.map((p) => p.lon);
-  const lats = flightPath.points.map((p) => p.lat);
-  const bounds = [
-    [Math.min(...lons), Math.min(...lats)],
-    [Math.max(...lons), Math.max(...lats)],
-  ];
-  map.fitBounds(bounds, { padding: 40, duration: 0 });
-}
-
-function goOverview() {
-  overviewMode = true;
-  map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
-  fitToRoute();
-  setMarkersVisible(true);
-}
-
-function setMarkersVisible(visible) {
-  document.querySelectorAll('.wp-marker').forEach((el) => { el.style.display = visible ? 'block' : 'none'; });
-}
-
-function setFreeCamera(lat, lon, alt, pitchDeg, bearingDegVal) {
-  const camera = map.getFreeCameraOptions();
-  camera.position = maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt);
-  camera.setPitchBearing(pitchDeg, bearingDegVal);
-  map.setFreeCameraOptions(camera);
-}
-
-// ---------- Lecture du survol ----------
-
-els.btnPlay.addEventListener('click', () => startFlight(false));
-els.btnPause.addEventListener('click', pauseFlight);
-els.btnRestart.addEventListener('click', () => { currentDistance = 0; renderFrame(); });
-els.btnOverview.addEventListener('click', goOverview);
-els.btnExport.addEventListener('click', () => { currentDistance = 0; startFlight(true); });
-els.btnRecompute.addEventListener('click', updateSummary);
-els.speedInput.addEventListener('change', updateSummary);
-els.progress.addEventListener('input', () => {
-  if (!flightPath) return;
-  currentDistance = (parseInt(els.progress.value, 10) / 1000) * flightPath.totalDistance;
-  renderFrame();
+[els.speedInput, els.altitudeInput, els.pitchInput, els.pauseInput].forEach((input) => {
+  input.addEventListener('input', () => { if (flightPath) updateSummary(); });
 });
-
-function startFlight(record) {
-  if (!flightPath) return;
-  overviewMode = false;
-  setMarkersVisible(false);
-  playing = true;
-  lastFrameTime = null;
-  for (const wp of waypoints) wp.shown = false;
-  els.btnPlay.hidden = true;
-  els.btnPause.hidden = false;
-  if (record) beginRecording();
-  requestAnimationFrame(tick);
-}
-
-function pauseFlight() {
-  playing = false;
-  els.btnPlay.hidden = false;
-  els.btnPause.hidden = true;
-}
-
-function stopFlight() {
-  playing = false;
-  els.btnPlay.hidden = false;
-  els.btnPause.hidden = true;
-}
-
-function tick(now) {
-  if (!playing) return;
-  if (lastFrameTime == null) lastFrameTime = now;
-  const dt = (now - lastFrameTime) / 1000;
-  lastFrameTime = now;
-
-  const speedKmh = parseFloat(els.speedInput.value) || 40;
-  currentDistance += (speedKmh / 3.6) * dt;
-
-  if (currentDistance >= flightPath.totalDistance) {
-    currentDistance = flightPath.totalDistance;
-    renderFrame();
-    stopFlight();
-    if (isRecording) endRecording();
-    return;
-  }
-  renderFrame();
-  requestAnimationFrame(tick);
-}
-
-function renderFrame() {
-  const p = flightPointAtDistance(flightPath, currentDistance);
-  const altitudeOffset = parseFloat(els.altitudeInput.value) || 150;
-  const pitch = parseFloat(els.pitchInput.value) || 68;
-  setFreeCamera(p.lat, p.lon, p.ground + altitudeOffset, pitch, p.bearing);
-
-  els.progress.value = Math.round(p.progress * 1000);
-  const speedKmh = parseFloat(els.speedInput.value) || 40;
-  const totalS = flightPath.totalDistance / (speedKmh / 3.6);
-  els.timeLabel.textContent = `${formatTime(currentDistance / (speedKmh / 3.6))} / ${formatTime(totalS)}`;
-
-  checkWaypointProximity();
-}
-
-function checkWaypointProximity() {
-  const TRIGGER_RADIUS = 40; // mètres
-  for (const wp of waypoints) {
-    if (!wp.shown && Math.abs(wp.dist - currentDistance) < TRIGGER_RADIUS) {
-      wp.shown = true;
-      showWaypointLabel(wp.name || 'Point d\'intérêt');
-    }
-  }
-}
-
-let waypointLabelTimer = null;
-function showWaypointLabel(name) {
-  els.waypointLabel.textContent = name;
-  els.waypointLabel.hidden = false;
-  els.waypointLabel.style.opacity = '1';
-  clearTimeout(waypointLabelTimer);
-  waypointLabelTimer = setTimeout(() => {
-    els.waypointLabel.style.opacity = '0';
-    setTimeout(() => { els.waypointLabel.hidden = true; }, 300);
-  }, 2500);
-}
 
 function formatTime(s) {
   if (!isFinite(s) || s < 0) s = 0;
@@ -401,39 +172,93 @@ function formatTime(s) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-// ---------- Export vidéo ----------
+function showError(msg) { els.importError.textContent = msg; els.importError.hidden = false; }
+function hideError() { els.importError.hidden = true; }
 
-function beginRecording() {
-  const canvas = map.getCanvas();
-  const stream = canvas.captureStream(30);
-  let mimeType = 'video/webm;codecs=vp9';
-  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+// ---------- Aperçu 2D (SVG, sans fond de carte) ----------
 
-  recordedChunks = [];
-  recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunks.push(e.data); };
-  recorder.onstop = () => {
-    isRecording = false;
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+function drawPreviewSVG(path, wps) {
+  const svg = els.previewSvg;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const refLat = path.points[0].lat, refLon = path.points[0].lon;
+  const xy = path.points.map((p) => toLocalXY(p.lat, p.lon, refLat, refLon));
+  const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
+  const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+
+  const w = 400, h = 260, pad = 22;
+  const spanX = Math.max(1, maxX - minX), spanY = Math.max(1, maxY - minY);
+  const scale = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
+  const toSvg = ([x, y]) => [
+    pad + (x - minX) * scale,
+    h - pad - (y - minY) * scale, // Y inversé : le nord vers le haut
+  ];
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const d = xy.map((p, i) => { const [sx, sy] = toSvg(p); return `${i === 0 ? 'M' : 'L'}${sx.toFixed(1)},${sy.toFixed(1)}`; }).join(' ');
+  const pathEl = document.createElementNS(ns, 'path');
+  pathEl.setAttribute('d', d);
+  pathEl.setAttribute('fill', 'none');
+  pathEl.setAttribute('stroke', '#5ec9ff');
+  pathEl.setAttribute('stroke-width', '2.5');
+  svg.appendChild(pathEl);
+
+  const addDot = (svgPt, color, r) => {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', svgPt[0]); c.setAttribute('cy', svgPt[1]); c.setAttribute('r', r);
+    c.setAttribute('fill', color); c.setAttribute('stroke', '#0b1220'); c.setAttribute('stroke-width', '1');
+    svg.appendChild(c);
+  };
+  addDot(toSvg(xy[0]), '#4caf50', 5); // départ
+  addDot(toSvg(xy[xy.length - 1]), '#ff6b6b', 5); // arrivée
+  for (const wp of wps) {
+    const p = toLocalXY(wp.lat, wp.lon, refLat, refLon);
+    addDot(toSvg(p), '#ffb454', 4);
+  }
+}
+
+// ---------- Génération et téléchargement du KMZ ----------
+
+els.btnGenerate.addEventListener('click', async () => {
+  if (!flightPath) return;
+  els.btnGenerate.disabled = true;
+  const originalLabel = els.btnGenerate.textContent;
+  els.btnGenerate.textContent = '⏳ Génération…';
+  try {
+    const kml = buildGxTourKML(flightPath, waypoints, currentSettings());
+    const zip = new JSZip();
+    zip.file('doc.kml', kml);
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.google-earth.kmz' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'randofly.webm';
+    a.download = 'randofly.kmz';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 15000);
-    showExportStatus('Vidéo exportée : randofly.webm');
+    showExportStatus('Fichier téléchargé : randofly.kmz');
     setTimeout(hideExportStatus, 4000);
-  };
-  recorder.start();
-  isRecording = true;
-  showExportStatus('Enregistrement du survol en cours…');
-}
+  } catch (err) {
+    reportError('Échec de la génération du KMZ', err.message || String(err));
+  } finally {
+    els.btnGenerate.disabled = false;
+    els.btnGenerate.textContent = originalLabel;
+  }
+});
 
-function endRecording() {
-  if (recorder && recorder.state !== 'inactive') recorder.stop();
-}
+els.btnToggleKml.addEventListener('click', () => {
+  if (!flightPath) return;
+  if (els.kmlPreview.hidden) {
+    els.kmlPreview.value = buildGxTourKML(flightPath, waypoints, currentSettings());
+    els.kmlPreview.hidden = false;
+    els.btnToggleKml.textContent = 'Masquer le KML';
+  } else {
+    els.kmlPreview.hidden = true;
+    els.btnToggleKml.textContent = 'Voir le KML généré';
+  }
+});
 
 function showExportStatus(msg) { els.exportStatus.textContent = msg; els.exportStatus.hidden = false; }
 function hideExportStatus() { els.exportStatus.hidden = true; }

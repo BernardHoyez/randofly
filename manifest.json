@@ -1,7 +1,7 @@
 {
   "name": "RandoFly",
   "short_name": "RandoFly",
-  "description": "Survol virtuel 3D d'une randonnée à partir d'un tracé GPX/KML/KMZ",
+  "description": "Génère un fichier KMZ de survol 3D (gx:Tour) pour Google Earth, à partir d'un tracé GPX/KML/KMZ",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

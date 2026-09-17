@@ -1,4 +1,4 @@
-const CACHE_NAME = 'randofly-cache-v8';
+const CACHE_NAME = 'randofly-cache-v9';
 const PRECACHE_ASSETS = [
   './',
   './index.html',
@@ -8,10 +8,9 @@ const PRECACHE_ASSETS = [
   './parse.js',
   './elevation.js',
   './flight.js',
+  './tour.js',
   './manifest.json',
   './icon.svg',
-  './vendor/maplibre-gl.js',
-  './vendor/maplibre-gl.css',
   './vendor/jszip.min.js',
 ];
 
@@ -36,7 +35,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   let pathname = null;
-  try { pathname = new URL(request.url).pathname; } catch (e) { /* requêtes cross-origin (tuiles IGN, altimétrie) */ }
+  try { pathname = new URL(request.url).pathname; } catch (e) { /* requêtes cross-origin (service d'altimétrie IGN) */ }
 
   const isAppFile =
     request.mode === 'navigate' ||
@@ -55,8 +54,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Tuiles orthophoto IGN, service d'altimétrie : cache-first (ne dépend pas
-  // de la version de l'app), avec repli réseau si absent du cache.
+  // Service d'altimétrie IGN : cache-first (ne dépend pas de la version de
+  // l'app), avec repli réseau si absent du cache.
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request))
   );

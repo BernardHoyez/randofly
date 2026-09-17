@@ -3,20 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RandoFly — Survol virtuel 3D</title>
-<meta name="description" content="Génère un survol virtuel 3D fluide d'une randonnée à partir d'un fichier GPX, KML ou KMZ.">
+<title>RandoFly — Générateur de survol Google Earth</title>
+<meta name="description" content="Génère un fichier KMZ de survol 3D (gx:Tour) à importer dans Google Earth, à partir d'un fichier GPX, KML ou KMZ.">
 <meta name="theme-color" content="#0b1220">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header class="topbar">
   <h1>🪂 RandoFly</h1>
-  <p class="subtitle">Survol virtuel 3D d'une randonnée — GPX / KML / KMZ</p>
+  <p class="subtitle">Génère un survol 3D (KMZ) à importer dans Google Earth — GPX / KML / KMZ</p>
 </header>
 
 <div id="global-error" class="global-error" hidden>
@@ -42,42 +41,41 @@
       <label>Vitesse de survol (km/h)
         <input type="number" id="speed-input" value="40" min="5" max="200" step="5">
       </label>
-      <label>Inclinaison caméra
+      <label>Inclinaison caméra (°)
         <input type="range" id="pitch-input" min="40" max="85" value="68" step="1">
+      </label>
+      <label>Pause aux points d'intérêt (s)
+        <input type="number" id="pause-input" value="2" min="0" max="15" step="0.5">
       </label>
     </div>
     <div id="summary" class="summary"></div>
+
+    <svg id="preview-svg" class="preview-svg" viewBox="0 0 400 260" preserveAspectRatio="xMidYMid meet"></svg>
+
     <div class="actions">
-      <button id="btn-recompute" class="secondary">Recalculer le survol</button>
+      <button id="btn-generate">⬇️ Générer et télécharger le KMZ</button>
+      <button id="btn-toggle-kml" class="secondary">Voir le KML généré</button>
     </div>
-  </section>
-
-  <section id="panel-map" class="panel" hidden>
-    <div id="map"></div>
-    <div id="waypoint-label" class="waypoint-label" hidden></div>
-    <div id="loading-overlay" class="loading-overlay" hidden><span></span></div>
-
-    <div class="player">
-      <button id="btn-play" title="Lecture">▶</button>
-      <button id="btn-pause" title="Pause" hidden>⏸</button>
-      <button id="btn-restart" title="Revenir au début">⏮</button>
-      <input type="range" id="progress" min="0" max="1000" value="0">
-      <span id="time-label">0:00 / 0:00</span>
-      <button id="btn-overview" title="Vue d'ensemble">🗺️</button>
-      <button id="btn-export" title="Exporter en vidéo">⏺ Exporter</button>
-    </div>
-    <p class="attribution">Fond orthophoto : © IGN Géoplateforme. Altitudes : fichier source ou service d'altimétrie IGN (RGE ALTI).</p>
+    <textarea id="kml-preview" class="kml-preview" readonly rows="8" hidden></textarea>
   </section>
 
   <div id="export-status" class="export-status" hidden></div>
 </main>
 
-<script src="vendor/maplibre-gl.js"></script>
+<p class="howto">
+  Une fois le fichier <code>.kmz</code> téléchargé : ouvrez
+  <a href="https://earth.google.com/" target="_blank" rel="noopener">Google Earth (web)</a>,
+  menu <strong>Projets</strong> → <strong>Ouvrir</strong> → <strong>Importer un fichier KML</strong>
+  (ou, sur Google Earth Pro, glissez le fichier dans le panneau « Lieux » puis cliquez sur
+  « Lire la visite »).
+</p>
+
 <script src="vendor/jszip.min.js"></script>
 <script src="geo.js"></script>
 <script src="parse.js"></script>
 <script src="elevation.js"></script>
 <script src="flight.js"></script>
+<script src="tour.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
