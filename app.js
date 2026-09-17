@@ -143,17 +143,18 @@ function ensureMap() {
     attributionControl: true,
   });
 
-  map.on('load', () => {
-    map.addLayer({
-      id: 'sky',
-      type: 'sky',
-      paint: {
-        'sky-type': 'atmosphere',
-        'sky-atmosphere-sun': [0, 90],
-        'sky-atmosphere-sun-intensity': 6,
-      },
-    });
+  // Ne jamais laisser une erreur de tuile/couche interrompre le reste de
+  // l'app : par défaut MapLibre logge déjà les erreurs de tuiles réseau,
+  // on s'assure juste qu'aucune exception ne remonte de façon inattendue.
+  map.on('error', (e) => {
+    console.warn('Carte : erreur ignorée -', e && e.error ? e.error.message : e);
   });
+
+  // Remarque : pas de couche "sky" ici — non supportée par la version de
+  // MapLibre GL JS vendorisée (3.6.2), et ajouter une couche invalide dans
+  // le gestionnaire 'load' interromprait les AUTRES écouteurs de cet
+  // événement (dont celui qui attend que la carte soit prête), bloquant
+  // l'appli sans erreur visible.
 }
 
 function mapIdle() {
