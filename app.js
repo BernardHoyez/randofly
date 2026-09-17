@@ -136,14 +136,20 @@ async function handleFile(file) {
     waypoints = attachWaypointDistances(rawWaypoints, flightPath);
     currentDistance = 0;
 
+    // Le conteneur de la carte doit être visible AVANT que MapLibre
+    // s'initialise : une carte WebGL créée dans un élément caché
+    // (display:none) ne se dimensionne pas correctement et peut ne jamais
+    // finir de charger.
+    els.panelSettings.hidden = false;
+    els.panelMap.hidden = false;
+
     ensureMap();
     await mapIdle();
+    map.resize(); // au cas où la taille aurait été calculée avant l'affichage
     drawRoute();
     fitToRoute();
     updateSummary();
 
-    els.panelSettings.hidden = false;
-    els.panelMap.hidden = false;
     hideLoading();
     goOverview();
   } catch (err) {
