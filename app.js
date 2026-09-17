@@ -27,7 +27,38 @@ const els = {
   btnOverview: document.getElementById('btn-overview'),
   btnExport: document.getElementById('btn-export'),
   exportStatus: document.getElementById('export-status'),
+  globalError: document.getElementById('global-error'),
 };
+
+// ---------- Bandeau d'erreur global ----------
+// Objectif : qu'aucune erreur (JS, réseau, carte) ne reste invisible dans la
+// seule console du navigateur. Tout s'affiche directement dans l'appli.
+
+function reportError(context, detail) {
+  const text = `${context} : ${detail}`;
+  const box = els.globalError.querySelector('.global-error-text');
+  const existing = box.textContent;
+  box.textContent = existing && !existing.includes(text) ? `${existing}\n${text}` : text;
+  els.globalError.hidden = false;
+  console.error(text);
+}
+
+els.globalError.querySelector('.global-error-close').addEventListener('click', () => {
+  els.globalError.hidden = true;
+  els.globalError.querySelector('.global-error-text').textContent = '';
+});
+els.globalError.querySelector('.global-error-copy').addEventListener('click', () => {
+  const text = els.globalError.querySelector('.global-error-text').textContent;
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+});
+
+window.addEventListener('error', (e) => {
+  reportError('Erreur JavaScript', e.message ? `${e.message} (${e.filename}:${e.lineno})` : String(e));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e.reason;
+  reportError('Erreur non gérée', reason && reason.message ? reason.message : String(reason));
+});
 
 let map = null;
 let flightPath = null;
@@ -81,6 +112,7 @@ async function handleFile(file) {
   } catch (err) {
     hideLoading();
     showError(err.message || String(err));
+    reportError('Échec du traitement du fichier', err.message || String(err));
   }
 }
 
@@ -144,10 +176,14 @@ function ensureMap() {
   });
 
   // Ne jamais laisser une erreur de tuile/couche interrompre le reste de
-  // l'app : par défaut MapLibre logge déjà les erreurs de tuiles réseau,
-  // on s'assure juste qu'aucune exception ne remonte de façon inattendue.
+  // l'app, et la rendre visible dans l'appli plutôt que dans la seule
+  // console (au plus une fois par type d'erreur, pour ne pas spammer).
+  const seenMapErrors = new Set();
   map.on('error', (e) => {
-    console.warn('Carte : erreur ignorée -', e && e.error ? e.error.message : e);
+    const msg = (e && e.error && e.error.message) || String(e);
+    if (seenMapErrors.has(msg)) return;
+    seenMapErrors.add(msg);
+    reportError('Erreur carte/réseau', msg);
   });
 
   // Remarque : pas de couche "sky" ici — non supportée par la version de
@@ -158,9 +194,10 @@ function ensureMap() {
 }
 
 function mapIdle() {
-  return new Promise((resolve) => {
-    if (map.loaded()) resolve();
-    else map.once('load', resolve);
+  return new Promise((resolve, reject) => {
+    if (map.loaded()) { resolve(); return; }
+    const timer = setTimeout(() => reject(new Error("La carte n'a pas terminé son chargement à temps (15s).")), 15000);
+    map.once('load', () => { clearTimeout(timer); resolve(); });
   });
 }
 
