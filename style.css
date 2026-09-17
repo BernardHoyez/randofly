@@ -194,7 +194,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 0.85rem;
   line-height: 1.4;
 }
-.global-error-text { flex: 1; white-space: pre-wrap; word-break: break-word; user-select: text; }
+.global-error-text {
+  flex: 1;
+  resize: vertical;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #ff6b6b;
+  border-radius: 6px;
+  color: #ffdada;
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  min-height: 2.4em;
+}
 .global-error-close { background: transparent; border: none; color: #ffdada; font-size: 1rem; cursor: pointer; padding: 0 0.25rem; }
 .global-error-copy { background: transparent; border: 1px solid #ff6b6b; color: #ffdada; border-radius: 6px; font-size: 0.9rem; cursor: pointer; padding: 0.1rem 0.4rem; }
 

@@ -37,30 +37,26 @@ const els = {
 function reportError(context, detail) {
   const text = `${context} : ${detail}`;
   const box = els.globalError.querySelector('.global-error-text');
-  const existing = box.textContent;
-  box.textContent = existing && !existing.includes(text) ? `${existing}\n${text}` : text;
+  const existing = box.value;
+  box.value = existing && !existing.includes(text) ? `${existing}\n${text}` : text;
   els.globalError.hidden = false;
   console.error(text);
 }
 
-// Repli ultime si même document.execCommand échoue : double-clic pour
-// sélectionner tout le texte et copier manuellement (Ctrl/Cmd+C).
-els.globalError.querySelector('.global-error-text').addEventListener('dblclick', (e) => {
-  const range = document.createRange();
-  range.selectNodeContents(e.currentTarget);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-});
+// Solution garantie sans dépendre d'aucune permission de presse-papiers :
+// un clic dans le champ sélectionne tout, il ne reste qu'à faire Ctrl+C.
+els.globalError.querySelector('.global-error-text').addEventListener('focus', (e) => e.currentTarget.select());
+els.globalError.querySelector('.global-error-text').addEventListener('click', (e) => e.currentTarget.select());
 
 els.globalError.querySelector('.global-error-close').addEventListener('click', () => {
   els.globalError.hidden = true;
-  els.globalError.querySelector('.global-error-text').textContent = '';
+  els.globalError.querySelector('.global-error-text').value = '';
 });
 els.globalError.querySelector('.global-error-copy').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
-  const text = els.globalError.querySelector('.global-error-text').textContent;
-  const ok = await copyToClipboard(text);
+  const field = els.globalError.querySelector('.global-error-text');
+  field.select();
+  const ok = await copyToClipboard(field.value);
   btn.textContent = ok ? '✅' : '⚠️';
   setTimeout(() => { btn.textContent = '📋'; }, 1500);
 });
