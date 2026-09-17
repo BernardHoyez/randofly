@@ -43,14 +43,55 @@ function reportError(context, detail) {
   console.error(text);
 }
 
+// Repli ultime si même document.execCommand échoue : double-clic pour
+// sélectionner tout le texte et copier manuellement (Ctrl/Cmd+C).
+els.globalError.querySelector('.global-error-text').addEventListener('dblclick', (e) => {
+  const range = document.createRange();
+  range.selectNodeContents(e.currentTarget);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+
 els.globalError.querySelector('.global-error-close').addEventListener('click', () => {
   els.globalError.hidden = true;
   els.globalError.querySelector('.global-error-text').textContent = '';
 });
-els.globalError.querySelector('.global-error-copy').addEventListener('click', () => {
+els.globalError.querySelector('.global-error-copy').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   const text = els.globalError.querySelector('.global-error-text').textContent;
-  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+  const ok = await copyToClipboard(text);
+  btn.textContent = ok ? '✅' : '⚠️';
+  setTimeout(() => { btn.textContent = '📋'; }, 1500);
 });
+
+async function copyToClipboard(text) {
+  if (!text) return false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* on tente le repli ci-dessous */ }
+  // Repli fiable si l'API Clipboard est absente/refusée (contexte non
+  // sécurisé, permission bloquée, ancien navigateur…) : sélection manuelle
+  // + document.execCommand, qui fonctionne quasiment partout.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
 
 window.addEventListener('error', (e) => {
   reportError('Erreur JavaScript', e.message ? `${e.message} (${e.filename}:${e.lineno})` : String(e));
