@@ -1,4 +1,4 @@
-const CACHE_NAME = 'randofly-cache-v12';
+const CACHE_NAME = 'randofly-cache-v13';
 const PRECACHE_ASSETS = [
   './',
   './index.html',

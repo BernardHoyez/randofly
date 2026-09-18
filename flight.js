@@ -34,7 +34,12 @@ async function buildFlightPath(track, onProgress) {
   // zigzag du tracé fait varier le cap brutalement, et la caméra "part"
   // sur le côté au lieu de suivre la direction générale du parcours. Viser
   // plus loin devant moyenne ces micro-variations.
-  const HEADING_LOOKAHEAD_M = 55;
+  // Portée de visée du cap : le point visé est loin devant (200-300 m),
+  // comme une caméra de survol réelle qui regarde vers l'avant du parcours
+  // plutôt que vers le point suivant immédiat (à quelques mètres). Ça
+  // élimine presque totalement les micro-corrections de cap dues au bruit
+  // GPS ou aux petits zigzags du tracé.
+  const HEADING_LOOKAHEAD_M = 250;
   const headingLookaheadIdx = Math.max(1, Math.round(HEADING_LOOKAHEAD_M / spatialStep));
 
   let prevBearing = null;
