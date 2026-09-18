@@ -82,10 +82,11 @@ async function buildElevationProfile(originalTrack, smoothSamplePoints, smoothCu
     return { cumDist, ele, source: 'fichier' };
   }
 
-  // Pas d'altitude dans le fichier : échantillonnage du tracé lissé, au pas
-  // le plus large possible tout en gardant un profil fidèle (max ~300 requêtes).
+  // Pas d'altitude dans le fichier : échantillonnage du tracé lissé. Pas
+  // plus large possible tout en gardant un profil sensible au relief réel
+  // (jusqu'à 500 requêtes, soit un point tous les ~20 m sur un tracé de 10 km).
   const totalDist = smoothCumDist[smoothCumDist.length - 1] || 1;
-  const targetCount = Math.min(300, Math.max(20, Math.round(totalDist / 40)));
+  const targetCount = Math.min(500, Math.max(30, Math.round(totalDist / 20)));
   const strideIdx = Math.max(1, Math.floor(smoothSamplePoints.length / targetCount));
 
   const sampleIdx = [];

@@ -28,14 +28,21 @@ async function buildFlightPath(track, onProgress) {
     return { lat, lon, ground, dist: cumDist[i] };
   });
 
-  // Cap (bearing) vers le point suivant, légèrement lissé pour éviter les
-  // à-coups de rotation caméra dans les virages serrés.
+  // Cap (bearing) : calculé vers un point situé plus loin devant (~40 m),
+  // et non vers le point immédiatement suivant. Le point suivant n'est
+  // qu'à 2-25 m : sur une si courte distance, le moindre bruit GPS ou petit
+  // zigzag du tracé fait varier le cap brutalement, et la caméra "part"
+  // sur le côté au lieu de suivre la direction générale du parcours. Viser
+  // plus loin devant moyenne ces micro-variations.
+  const HEADING_LOOKAHEAD_M = 40;
+  const headingLookaheadIdx = Math.max(1, Math.round(HEADING_LOOKAHEAD_M / spatialStep));
+
   let prevBearing = null;
   for (let i = 0; i < points.length; i++) {
-    const next = points[Math.min(i + 1, points.length - 1)];
-    const raw = bearingDeg(points[i].lat, points[i].lon, next.lat, next.lon);
+    const target = points[Math.min(i + headingLookaheadIdx, points.length - 1)];
+    const raw = bearingDeg(points[i].lat, points[i].lon, target.lat, target.lon);
     if (prevBearing === null) prevBearing = raw;
-    const smoothedBearing = prevBearing + shortestAngleDelta(prevBearing, raw) * 0.35;
+    const smoothedBearing = prevBearing + shortestAngleDelta(prevBearing, raw) * 0.25;
     points[i].bearing = smoothedBearing;
     prevBearing = smoothedBearing;
   }
