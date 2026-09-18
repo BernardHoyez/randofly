@@ -34,7 +34,7 @@ async function buildFlightPath(track, onProgress) {
   // zigzag du tracé fait varier le cap brutalement, et la caméra "part"
   // sur le côté au lieu de suivre la direction générale du parcours. Viser
   // plus loin devant moyenne ces micro-variations.
-  const HEADING_LOOKAHEAD_M = 40;
+  const HEADING_LOOKAHEAD_M = 55;
   const headingLookaheadIdx = Math.max(1, Math.round(HEADING_LOOKAHEAD_M / spatialStep));
 
   let prevBearing = null;
@@ -42,7 +42,7 @@ async function buildFlightPath(track, onProgress) {
     const target = points[Math.min(i + headingLookaheadIdx, points.length - 1)];
     const raw = bearingDeg(points[i].lat, points[i].lon, target.lat, target.lon);
     if (prevBearing === null) prevBearing = raw;
-    const smoothedBearing = prevBearing + shortestAngleDelta(prevBearing, raw) * 0.25;
+    const smoothedBearing = prevBearing + shortestAngleDelta(prevBearing, raw) * 0.2;
     points[i].bearing = smoothedBearing;
     prevBearing = smoothedBearing;
   }

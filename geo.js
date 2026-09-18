@@ -45,29 +45,47 @@ function fromLocalXY(x, y, refLat, refLon) {
   return [lat, lon];
 }
 
-// Catmull-Rom uniforme : lisse une polyligne en passant par tous ses points
-// d'origine, sans coins brusques. points: [[x,y], ...] en mètres locaux.
-function catmullRomSmooth(points, samplesPerSegment) {
+// Catmull-Rom CENTRIPÈTE (alpha=0.5) : lisse une polyligne en passant par
+// tous ses points d'origine, sans coins brusques. Contrairement à la version
+// "uniforme", la variante centripète ne dépasse pas (overshoot) à
+// l'extérieur des virages serrés (ex. lacets d'un sentier de montagne) — la
+// trajectoire lissée reste donc plus proche du tracé réel. points: [[x,y], ...]
+// en mètres locaux.
+function catmullRomSmooth(points, samplesPerSegment, alpha) {
+  if (alpha === undefined) alpha = 0.5;
   const n = points.length;
   if (n < 3) return points.slice();
   const out = [];
-  const seg = (p0, p1, p2, p3, t) => {
-    const t2 = t * t, t3 = t2 * t;
-    const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t +
-      (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
-      (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
-    const y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t +
-      (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
-      (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
-    return [x, y];
+
+  const nextT = (t, a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const d = Math.pow(dx * dx + dy * dy, alpha * 0.5);
+    return t + (d || 1e-6); // évite une division par zéro si deux points sont confondus
   };
+  const lerpPt = (a, b, ta, tb, t) => {
+    const f = (tb - t) / (tb - ta || 1e-6);
+    return [a[0] * f + b[0] * (1 - f), a[1] * f + b[1] * (1 - f)];
+  };
+
   for (let i = 0; i < n - 1; i++) {
     const p0 = points[Math.max(0, i - 1)];
     const p1 = points[i];
     const p2 = points[i + 1];
     const p3 = points[Math.min(n - 1, i + 2)];
+
+    const t0 = 0;
+    const t1 = nextT(t0, p0, p1);
+    const t2 = nextT(t1, p1, p2);
+    const t3 = nextT(t2, p2, p3);
+
     for (let s = 0; s < samplesPerSegment; s++) {
-      out.push(seg(p0, p1, p2, p3, s / samplesPerSegment));
+      const t = t1 + (t2 - t1) * (s / samplesPerSegment);
+      const A1 = lerpPt(p0, p1, t0, t1, t);
+      const A2 = lerpPt(p1, p2, t1, t2, t);
+      const A3 = lerpPt(p2, p3, t2, t3, t);
+      const B1 = lerpPt(A1, A2, t0, t2, t);
+      const B2 = lerpPt(A2, A3, t1, t3, t);
+      out.push(lerpPt(B1, B2, t1, t2, t));
     }
   }
   out.push(points[n - 1]);
